@@ -125,11 +125,13 @@ class UserDefinedForm extends Page
      */
     private static $has_many = [
         'Submissions' => SubmittedForm::class,
-        'EmailRecipients' => EmailRecipient::class
+        'EmailRecipients' => EmailRecipient::class,
+        'ActionHandlers' => UserDefinedFormAction::class,
     ];
 
     private static $cascade_deletes = [
         'EmailRecipients',
+        'ActionHandlers',
     ];
 
     /**
@@ -185,7 +187,7 @@ class UserDefinedForm extends Page
         $this->beforeUpdateCMSFields(function ($fields) {
             // define tabs
             $fields->findOrMakeTab('Root.FormOptions', _t(__CLASS__.'.CONFIGURATION', 'Configuration'));
-            $fields->findOrMakeTab('Root.Recipients', _t(__CLASS__.'.RECIPIENTS', 'Recipients'));
+            $fields->findOrMakeTab('Root.ActionHandlers', _t(__CLASS__.'.ACTIONS', 'Action handlers'));
             $fields->findOrMakeTab('Root.Submissions', _t(__CLASS__.'.SUBMISSIONS', 'Submissions'));
 
             // text to show on complete
@@ -207,26 +209,26 @@ class UserDefinedForm extends Page
             $label->addExtraClass('left');
 
             // Define config for email recipients
-            $emailRecipientsConfig = GridFieldConfig_RecordEditor::create(10);
-            $emailRecipientsConfig->getComponentByType(GridFieldAddNewButton::class)
+            $actionHandlersConfig = GridFieldConfig_RecordEditor::create(10);
+            $actionHandlersConfig->getComponentByType(GridFieldAddNewButton::class)
                 ->setButtonName(
-                    _t(__CLASS__.'.ADDEMAILRECIPIENT', 'Add Email Recipient')
+                    _t(__CLASS__.'.ADDACTIONHANDLER', 'Add Action Handler')
                 );
 
             // who do we email on submission
-            $emailRecipients = GridField::create(
-                'EmailRecipients',
-                _t(__CLASS__.'.EMAILRECIPIENTS', 'Email Recipients'),
-                $this->EmailRecipients(),
-                $emailRecipientsConfig
+            $actionHandlers = GridField::create(
+                'ActionHandlers',
+                _t(__CLASS__.'.ACTIONHANDLERS', 'Action Handler'),
+                $this->ActionHandlers(),
+                $actionHandlersConfig
             );
-            $emailRecipients
+            $actionHandlers
                 ->getConfig()
                 ->getComponentByType(GridFieldDetailForm::class)
                 ->setItemRequestClass(UserFormRecipientItemRequest::class);
 
             $fields->addFieldsToTab('Root.FormOptions', $onCompleteFieldSet);
-            $fields->addFieldToTab('Root.Recipients', $emailRecipients);
+            $fields->addFieldToTab('Root.ActionHandlers', $actionHandlers);
             $fields->addFieldsToTab('Root.FormOptions', $this->getFormOptions());
 
 

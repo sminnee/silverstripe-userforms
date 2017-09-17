@@ -53,6 +53,11 @@ class UserForm extends Form
         }
 
         $data = $this->getRequest()->getSession()->get("FormInfo.{$this->FormName()}.data");
+        if (!is_array($data)) {
+            // If not loaded from the session, load the default form content from action handlers
+            $data = $this->controller->getHandlerDefaultFormData();
+
+        }
 
         if (is_array($data)) {
             $this->loadDataFrom($data);

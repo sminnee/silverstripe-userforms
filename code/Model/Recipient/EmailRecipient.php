@@ -492,20 +492,6 @@ class EmailRecipient extends DataObject
     }
 
     /**
-     * Make sure the email template saved against the recipient exists on the file system.
-     *
-     * @param string
-     *
-     * @return boolean
-     */
-    public function emailTemplateExists($template = '')
-    {
-        $t = ($template ? $template : $this->EmailTemplate);
-
-        return array_key_exists($t, $this->getEmailTemplateDropdownValues());
-    }
-
-    /**
      * Get the email body for the current email format
      *
      * @return string

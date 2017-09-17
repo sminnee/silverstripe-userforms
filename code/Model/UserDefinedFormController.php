@@ -22,6 +22,7 @@ use SilverStripe\UserForms\Model\Submission\SubmittedForm;
 use SilverStripe\View\ArrayData;
 use SilverStripe\View\Requirements;
 use SilverStripe\View\SSViewer;
+use SilverStripe\UserForms\Handler\FormDefaultProvider;
 
 /**
  * Controller for the {@link UserDefinedForm} page type.
@@ -211,8 +212,8 @@ JS
             $submittedForm->write();
         }
 
-        $attachments = array();
         $submittedFields = ArrayList::create();
+        $handlerData = [];
 
         foreach ($this->Fields() as $field) {
             if (!$field->showInReports()) {
@@ -232,6 +233,8 @@ JS
                     $submittedField->Value = $data[$field->Name];
                 }
             }
+
+            $handlerData[$field->Name] = $data[$field->Name];
 
             if (!empty($data[$field->Name])) {
                 if (in_array(EditableFileField::class, $field->getClassAncestry())) {
@@ -253,11 +256,7 @@ JS
 
                         // write file to form field
                         $submittedField->UploadedFileID = $file->ID;
-
-                        // attach a file only if lower than 1MB
-                        if ($file->getAbsoluteSize() < 1024 * 1024 * 1) {
-                            $attachments[] = $file;
-                        }
+                        $handlerData[$field->Name] = $file;
                     }
                 }
             }
@@ -271,97 +270,9 @@ JS
             $submittedFields->push($submittedField);
         }
 
-        $emailData = [
-            'Sender' => Security::getCurrentUser(),
-            'Fields' => $submittedFields
-        ];
-
-        $this->extend('updateEmailData', $emailData, $attachments);
-
-        // email users on submit.
-        if ($recipients = $this->FilteredEmailRecipients($data, $form)) {
-            foreach ($recipients as $recipient) {
-                $email = Email::create()
-                    ->setHTMLTemplate('email/SubmittedFormEmail.ss')
-                    ->setPlainTemplate('email/SubmittedFormEmail.ss');
-
-                $mergeFields = $this->getMergeFieldsMap($emailData['Fields']);
-
-                if ($attachments) {
-                    foreach ($attachments as $file) {
-                        if (!$file->ID != 0) {
-                            continue;
-                        }
-
-                        $email->attachFile(
-                            $file->Filename,
-                            $file->Filename,
-                            HTTP::get_mime_type($file->Filename)
-                        );
-                    }
-                }
-
-                $parsedBody = SSViewer::execute_string($recipient->getEmailBodyContent(), $mergeFields);
-
-                if (!$recipient->SendPlain && $recipient->emailTemplateExists()) {
-                    $email->setHTMLTemplate($recipient->EmailTemplate);
-                }
-
-                $email->setData($recipient);
-                foreach ($emailData as $key => $value) {
-                    $email->addData($key, $value);
-                }
-
-                $email->setFrom($recipient->EmailFrom);
-                $email->setBody($parsedBody);
-                $email->setTo($recipient->EmailAddress);
-                $email->setSubject($recipient->EmailSubject);
-
-                if ($recipient->EmailReplyTo) {
-                    $email->setReplyTo($recipient->EmailReplyTo);
-                }
-
-                // check to see if they are a dynamic reply to. eg based on a email field a user selected
-                if ($recipient->SendEmailFromField()) {
-                    $submittedFormField = $submittedFields->find('Name', $recipient->SendEmailFromField()->Name);
-
-                    if ($submittedFormField && is_string($submittedFormField->Value)) {
-                        $email->setReplyTo($submittedFormField->Value);
-                    }
-                }
-                // check to see if they are a dynamic reciever eg based on a dropdown field a user selected
-                if ($recipient->SendEmailToField()) {
-                    $submittedFormField = $submittedFields->find('Name', $recipient->SendEmailToField()->Name);
-
-                    if ($submittedFormField && is_string($submittedFormField->Value)) {
-                        $email->setTo($submittedFormField->Value);
-                    }
-                }
-
-                // check to see if there is a dynamic subject
-                if ($recipient->SendEmailSubjectField()) {
-                    $submittedFormField = $submittedFields->find('Name', $recipient->SendEmailSubjectField()->Name);
-
-                    if ($submittedFormField && trim($submittedFormField->Value)) {
-                        $email->setSubject($submittedFormField->Value);
-                    }
-                }
-
-                $this->extend('updateEmail', $email, $recipient, $emailData);
-
-                if ($recipient->SendPlain) {
-                    $body = strip_tags($recipient->getEmailBodyContent()) . "\n";
-                    if (isset($emailData['Fields']) && !$recipient->HideFormData) {
-                        foreach ($emailData['Fields'] as $Field) {
-                            $body .= $Field->Title . ': ' . $Field->Value . " \n";
-                        }
-                    }
-
-                    $email->setBody($body);
-                    $email->sendPlain();
-                } else {
-                    $email->send();
-                }
+        foreach ($this->dataRecord->ActionHandlers() as $handlerRecord) {
+            if ($handler = $handlerRecord->getHandler()) {
+                $handler->runHandler($handlerData);
             }
         }
 
@@ -398,20 +309,20 @@ JS
     }
 
     /**
-     * Allows the use of field values in email body.
+     * Return the default form data supplied by the handler, if any
      *
-     * @param ArrayList $fields
-     * @return ArrayData
+     * @return array
      */
-    protected function getMergeFieldsMap($fields = [])
+    public function getHandlerDefaultFormData()
     {
-        $data = ArrayData::create([]);
-
-        foreach ($fields as $field) {
-            $data->setField($field->Name, DBField::create_field('Text', $field->Value));
+        $defaults = [];
+        foreach ($this->dataRecord->ActionHandlers() as $handlerRecord) {
+            $handler = $handlerRecord->getHandler();
+            if ($handler && $handler instanceof FormDefaultProvider) {
+                $defaults = array_merge($defaults, (array)$handler->getDefaults($this->dataRecord->Fields()));
+            }
         }
-
-        return $data;
+        return $defaults;
     }
 
     /**
